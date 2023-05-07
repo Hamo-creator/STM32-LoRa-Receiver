@@ -28,8 +28,9 @@
 
 #include "LoRa.h"
 #include "string.h"
-#include "SERVO.h"
+//#include "SERVO.h"
 #include "MATH.h"
+#include "ServoBLDC.h"
 
 /* USER CODE END Includes */
 
@@ -44,12 +45,10 @@
 #define SEND_DATA   0xEE
 #define RECV_DATA   0xFF
 
-#define SERVO_MIN_PULSE_WIDTH 500   // Minimum pulse width for servo in microseconds
-#define SERVO_MAX_PULSE_WIDTH 2500  // Maximum pulse width for servo in microseconds
-#define SERVO_MIN_ANGLE 0           // Minimum angle for servo in degrees
-#define SERVO_MAX_ANGLE 180         // Maximum angle for servo in degrees
+#define Calibrate	0        //To calibrate the ESC set it to 1
 
 #define SERVO1  0
+#define SERVO2	1	
 
 /* USER CODE END PD */
 
@@ -78,13 +77,14 @@ float temp = 0.0;
 uint16_t min_pulse_width = 0;      //650ms
 uint16_t max_pulse_width = 0;     //2000ms
 
+long Angle1;
+long Angle2;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
-
-uint16_t writeServo(TIM_HandleTypeDef *htim, uint32_t ch, uint16_t adc_value, uint16_t min_pulse_width, uint16_t max_pulse_width);
 	
 
 /* USER CODE END PFP */
@@ -92,19 +92,7 @@ uint16_t writeServo(TIM_HandleTypeDef *htim, uint32_t ch, uint16_t adc_value, ui
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
-// Function to calculate the pulse width for a given angle
-uint32_t calc_pulse_width(float angle) {
-    float pulse_width = ((angle - SERVO_MIN_ANGLE) * (SERVO_MAX_PULSE_WIDTH - SERVO_MIN_PULSE_WIDTH) / (SERVO_MAX_ANGLE - SERVO_MIN_ANGLE)) + SERVO_MIN_PULSE_WIDTH;
-    return (uint32_t)(pulse_width);
-}
 
-// Function to set the servo angle
-void set_servo_angle(TIM_HandleTypeDef *htim, uint32_t channel, float angle) {
-    uint32_t pulse_width = calc_pulse_width(angle);
-    //__HAL_TIM_SET_COMPARE(htim, channel, pulse_width);
-		htim->Instance->CCR1 = pulse_width;
-		HAL_TIM_PWM_Start(htim, channel);
-}
 
 /* USER CODE END 0 */
 
@@ -166,9 +154,22 @@ int main(void)
 	
 	LoRa_startReceiving(&myLoRa);
 	
-	SERVO_Init(SERVO1);
-	min_pulse_width = SERVO_Get_MinPulse(SERVO1);
-	max_pulse_width = SERVO_Get_MaxPulse(SERVO1);
+	#if Calibrate
+		TIM1->CCR1 = 1000;   //Set the maximum pulse (2ms)
+		HAL_Delay(2000);		 //Wait for 1 beep
+		TIM1->CCR1 = 500;    //Set the minimum pulse (1ms)
+		HAL_Delay(1000);     //Wait for 2 beep
+		TIM1->CCR1 = 0;      //Reset to 0, so it can be controlled via ADC
+	#endif
+	
+//	SERVO_Init(SERVO1);
+//	min_pulse_width = SERVO_Get_MinPulse(SERVO1);
+//	max_pulse_width = SERVO_Get_MaxPulse(SERVO1);
+	motorInit(SERVO1);
+	motorInit(SERVO2);
+	
+//	HAL_TIM_PWM_Start(&htim, TIM_CHANNEL_1);
+//	HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
 
   /* USER CODE END 2 */
 
@@ -203,16 +204,40 @@ int main(void)
 			Data[i/2] = RX_BUF[i] | RX_BUF[i+1] << 8;
 		}
 		
-		//PWM_res = Data[3];
-		//temp = ((max_pulse_width - min_pulse_width) / 4096.0);
-		//pulseValue = (PWM_res * temp) + min_pulse_width;
-		pulseValue = MAP(Data[0], 0, 4095, min_pulse_width, max_pulse_width);
-		SERVO_RawMove(SERVO1, pulseValue);
-		HAL_Delay(1);
-		//SERVO_MoveTo(SERVO1, pulseValue);
-		//SERVO_Sweep(SERVO1);
-		//set_servo_angle(&htim1, TIM_CHANNEL_1, Data[3]);
-		//pulseValue  = writeServo(&htim1, TIM_CHANNEL_1, Data[3], min_pulse_width, max_pulse_width);
+		Angle1 = map(Data[3], 0, 4095, 500, 1000);
+		moveToangle(SERVO1, Angle1);
+		Angle2 = map(Data[4], 0, 4095, 500, 1000);
+		moveToangle(SERVO2, Angle2);
+		
+//		TIM1->CCR1 = 500;
+//		HAL_Delay(50);
+//		TIM1->CCR1 = 600;
+//		HAL_Delay(50);
+//		TIM1->CCR1 = 700;
+//		HAL_Delay(50);
+//		TIM1->CCR1 = 800;
+//		HAL_Delay(50);
+//		TIM1->CCR1 = 900;
+//		HAL_Delay(50);
+//		TIM1->CCR1 = 1000;
+//		HAL_Delay(50);
+//		TIM1->CCR1 = 1100;
+//		HAL_Delay(50);
+		
+//		pulseValue = MAP(Data[4], 0, 4095, min_pulse_width, max_pulse_width);
+//		SERVO_RawMove(SERVO1, pulseValue);
+		
+//		htim2.Instance->CCR1 = 500;
+//		HAL_Delay(150);
+//		htim2.Instance->CCR1 = 600;
+//		HAL_Delay(150);
+//		htim2.Instance->CCR1 = 700;
+//		HAL_Delay(150);
+//		htim2.Instance->CCR1 = 800;
+//		HAL_Delay(150);
+//		htim2.Instance->CCR1 = 900;
+//		HAL_Delay(150);
+		//HAL_Delay(1);
   }
 	
   /* USER CODE END 3 */
@@ -258,29 +283,6 @@ void SystemClock_Config(void)
 
 /* USER CODE BEGIN 4 */
 
-int map(int st1, int fn1, int st2, int fn2, int value)
-{
-    return (1.0*(value-st1))/((fn1-st1)*1.0) * (fn2-st2)+st2;
-}
-
-void servo_write(int angle)
-{
-	htim1.Instance->CCR1 = map(0,180,50,250,angle);
-}
-
-uint16_t writeServo(TIM_HandleTypeDef *htim, uint32_t ch, uint16_t adc_value, uint16_t min_pulse_width, uint16_t max_pulse_width)
-{
-	uint16_t pulse_width = 0;
-	
-	//Calculate the pulse width based on the ADC value
-	pulse_width = (((max_pulse_width - min_pulse_width) * adc_value) / 4095) + min_pulse_width;
-	
-	//Set the pulse width for the specified timer channel
-	//__HAL_TIM_SET_COMPARE(htim, ch, pulse_width);
-	htim->Instance->CCR1 = pulse_width;
-	HAL_TIM_PWM_Start(htim, ch);
-	return pulse_width;
-}
 
 /* USER CODE END 4 */
 
